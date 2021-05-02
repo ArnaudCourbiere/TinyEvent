@@ -32,33 +32,36 @@ public:
 protected:
     virtual ~BaseEventManager() = default;
     virtual void ProcessQueuedEvents() = 0;
-    static std::vector<BaseEventManager*> s_eventManagers;
-    static unsigned int NextId() { return s_id++; }
+
+    void AddEventManager(BaseEventManager* pMgr)
+    {
+        s_eventManagers.push_back(pMgr);
+    }
 
 private:
     BaseEventManager(const BaseEventManager&) = delete;
     BaseEventManager(BaseEventManager&&) = delete;
     void operator=(const BaseEventManager&) = delete;
 
-    static unsigned int s_id;
+    static std::vector<BaseEventManager*> s_eventManagers;
 };
 
 template <typename T>
 class EventManager final : public BaseEventManager
 {
 public:
-    static EventManager<T>* Get()
+    static EventManager<T>*Get()
     {
         static EventManager<T> eventManager;
         return &eventManager;
     }
 
-    void AddEvent(T& event)
+    void AddEvent(T & event)
     {
         m_pendingEvents.push_back(std::move(event));
     }
 
-    void AddEventListener(EventListener<T>* pEventListener)
+    void AddEventListener(EventListener<T>*pEventListener)
     {
         if (pEventListener != nullptr)
         {
@@ -66,7 +69,7 @@ public:
         }
     }
 
-    bool RemoveEventListener(EventListener<T>* pEventListener)
+    bool RemoveEventListener(EventListener<T>*pEventListener)
     {
         if (m_processingEvents)
         {
@@ -113,20 +116,13 @@ protected:
 
     EventManager()
     {
-        assert(s_eventManagers.size() == GetId());
-        s_eventManagers.push_back(this);
+        AddEventManager(this);
     }
 
 private:
     EventManager(const EventManager&) = delete;
     EventManager(EventManager&&) = delete;
     void operator=(const EventManager&) = delete;
-
-    unsigned int GetId() const
-    {
-        static unsigned int id = BaseEventManager::NextId();
-        return id;
-    }
 
     std::vector<T> m_pendingEvents;
     std::vector<EventListener<T>*> m_eventListeners;
