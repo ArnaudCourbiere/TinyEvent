@@ -1,19 +1,21 @@
 #include <gtest/gtest.h>
 #include <TinyEvent.h>
 
+using namespace TinyEvent;
+
 // An event to broadcast.
 // Any class/struct can be broadcasted as an event.
 struct AnEvent
 {
     bool one;
-    int two;
+    int  two;
 };
 
 // An event listener.
-class AnEventListener : public TinyEvent::EventListener<AnEvent>
+class AnEventListener : public EventListener<AnEvent>
 {
 public:
-    bool OnEvent(AnEvent* /*unused*/)
+    bool OnEvent(AnEvent /*unused*/)
     {
         // Do something with event
 
@@ -23,27 +25,31 @@ public:
         return false;
     }
 
-    bool called{ false };
+    bool called{false};
 };
 
 // Demonstrate some basic assertions.
-TEST(TinyEvent, BasicTest) {
+TEST(TinyEvent, BasicTest)
+{
 
     // Queue an event.
-    AnEvent event{ true, 5 };
-
-    TinyEvent::EventManager<AnEvent>::Get()->AddEvent(event);
+    AnEvent event{true, 5};
 
     // Add an event listener.
-    AnEventListener eventListener;
-    TinyEvent::EventManager<AnEvent>::Get()->AddEventListener(&eventListener);
+    EventBus bus;
+    auto     pSharedListener = std::make_shared<AnEventListener>();
+    bool     lambdaCalled    = false;
 
-    // ...
+    bus.AddEvent(event);
+    bus.AddEventListener<AnEvent>([&lambdaCalled](AnEvent /*unused*/) { lambdaCalled = true; });
+    bus.AddEventListener<AnEvent>(pSharedListener);
 
-    ASSERT_FALSE(eventListener.called);
+    ASSERT_FALSE(pSharedListener->called);
+    ASSERT_FALSE(lambdaCalled);
 
     // Process queued events.
-    TinyEvent::BaseEventManager::ProcessEvents();
+    bus.ProcessQueuedEvents();
 
-    ASSERT_TRUE(eventListener.called);
+    ASSERT_TRUE(pSharedListener->called);
+    ASSERT_TRUE(lambdaCalled);
 }

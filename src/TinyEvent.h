@@ -1,9 +1,16 @@
 #pragma once
 
+#include <iostream>
 #include <cassert>
 #include <vector>
 #include <algorithm>
 #include <utility>
+#include <any>
+#include <utility>
+#include <unordered_map>
+#include <atomic>
+#include <functional>
+#include <memory>
 
 namespace TinyEvent
 {
@@ -12,121 +19,67 @@ template <typename T>
 class EventListener
 {
 public:
-    virtual ~EventListener() = default;
-    virtual bool OnEvent(T* pEvent) = 0;
+    virtual ~EventListener() { std::cout << "~EventListener()\n"; };
+    virtual bool OnEvent(T e) = 0;
 };
 
-class BaseEventManager
+class EventBus
 {
 public:
-    BaseEventManager() = default;
-
-    static void ProcessEvents()
+    template <typename T>
+    void AddEventListener(std::shared_ptr<EventListener<T>> pEventListener)
     {
-        for (auto pEventManager : s_eventManagers)
+        m_map[GetTypeId<T>()].second.push_back([pEventListener](std::any e) { pEventListener->OnEvent(std::any_cast<T>(e)); });
+    }
+
+    template <typename T>
+    void AddEventListener(std::function<void(T)> f)
+    {
+        m_map[GetTypeId<T>()].second.push_back([f](std::any e) { f(std::any_cast<T>(e)); });
+    }
+
+    template <typename T>
+    void RemoveEventListener(/* tbd */)
+    {
+        // TODO
+    }
+
+    template <typename T>
+    void AddEvent(T event)
+    {
+        m_map[GetTypeId<T>()].first.push_back(event);
+    }
+
+    void ProcessQueuedEvents()
+    {
+        for (auto& p : m_map)
         {
-            pEventManager->ProcessQueuedEvents();
-        }
-    }
-
-protected:
-    virtual ~BaseEventManager() = default;
-    virtual void ProcessQueuedEvents() = 0;
-
-    void AddEventManager(BaseEventManager* pMgr)
-    {
-        s_eventManagers.push_back(pMgr);
-    }
-
-private:
-    BaseEventManager(const BaseEventManager&) = delete;
-    BaseEventManager(BaseEventManager&&) = delete;
-    void operator=(const BaseEventManager&) = delete;
-
-    static std::vector<BaseEventManager*> s_eventManagers;
-};
-
-template <typename T>
-class EventManager final : public BaseEventManager
-{
-public:
-    static EventManager<T>*Get()
-    {
-        static EventManager<T> eventManager;
-        return &eventManager;
-    }
-
-    void AddEvent(T & event)
-    {
-        m_pendingEvents.push_back(std::move(event));
-    }
-
-    void AddEventListener(EventListener<T>*pEventListener)
-    {
-        if (pEventListener != nullptr)
-        {
-            m_eventListeners.push_back(pEventListener);
-        }
-    }
-
-    bool RemoveEventListener(EventListener<T>*pEventListener)
-    {
-        if (m_processingEvents)
-        {
-            return false;
-        }
-
-        bool found = false;
-
-        auto it = std::find(m_eventListeners.begin(), m_eventListeners.end(), pEventListener);
-
-        if (it != m_eventListeners.end())
-        {
-            found = true;
-            m_eventListeners.erase(it);
-        }
-
-        return found;
-    }
-
-protected:
-    void ProcessQueuedEvents() override
-    {
-        m_processingEvents = true;
-
-        if (m_eventListeners.size() > 0)
-        {
-            for (T& event : m_pendingEvents)
+            for (auto& event : p.second.first)
             {
-                for (EventListener<T>* pEventListener : m_eventListeners)
+                for (auto& eventListener : p.second.second)
                 {
-                    bool stopProcessing = pEventListener->OnEvent(&event);
-
-                    if (stopProcessing)
-                    {
-                        break;
-                    }
+                    eventListener(event);
                 }
             }
+
+            // Clear events.
+            p.second.first.clear();
         }
-
-        m_pendingEvents.clear();
-        m_processingEvents = false;
-    }
-
-    EventManager()
-    {
-        AddEventManager(this);
     }
 
 private:
-    EventManager(const EventManager&) = delete;
-    EventManager(EventManager&&) = delete;
-    void operator=(const EventManager&) = delete;
+    template <typename T>
+    inline static int GetTypeId()
+    {
+        static const int id = s_lastTypeId++;
+        return id;
+    }
 
-    std::vector<T> m_pendingEvents;
-    std::vector<EventListener<T>*> m_eventListeners;
-    bool m_processingEvents = false;
+    static std::atomic_int s_lastTypeId;
+
+    using GenEventListener = std::function<void(std::any)>;
+    using GenVector        = std::vector<std::any>;
+
+    std::unordered_map<int, std::pair<GenVector, std::vector<GenEventListener>>> m_map;
 };
-
-}
+} // namespace TinyEvent

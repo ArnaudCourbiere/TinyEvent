@@ -3,6 +3,6 @@
 namespace TinyEvent
 {
 
-std::vector<BaseEventManager*> BaseEventManager::s_eventManagers;
+std::atomic_int EventBus::s_lastTypeId = 0;
 
-}
+} // namespace TinyEvent
