@@ -29,13 +29,13 @@ addons:
     packages:
       #- g++-4.9
       #- g++-5
-      - g++-6
+      - g++-9
       
 matrix:
   include:
     - os: linux
       sudo: false
-      env: GCC_VER="6"
+      env: GCC_VER="9"
       compiler: gcc
   
 before_script:
