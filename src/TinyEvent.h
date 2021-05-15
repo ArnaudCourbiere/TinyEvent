@@ -1,12 +1,7 @@
 #pragma once
 
-#include <iostream>
-#include <cassert>
 #include <vector>
-#include <algorithm>
-#include <utility>
 #include <any>
-#include <utility>
 #include <unordered_map>
 #include <atomic>
 #include <functional>
@@ -19,55 +14,86 @@ template <typename T>
 class EventListener
 {
 public:
-    virtual ~EventListener() { std::cout << "~EventListener()\n"; };
-    virtual bool OnEvent(T e) = 0;
+    virtual ~EventListener(){};
+    virtual void OnEvent(T e) = 0;
 };
 
 class EventBus
 {
 public:
     template <typename T>
-    void AddEventListener(std::shared_ptr<EventListener<T>> pEventListener)
+    int AddEventListener(std::shared_ptr<EventListener<T>> pEventListener)
     {
-        m_map[GetTypeId<T>()].second.push_back([pEventListener](std::any e) { pEventListener->OnEvent(std::any_cast<T>(e)); });
+        ListenerRecord r = {m_lastListenerId++, [pEventListener](std::any e) { pEventListener->OnEvent(std::any_cast<T>(e)); }};
+        m_map[GetTypeId<T>()].listeners.push_back(r);
+        return r.id;
     }
 
     template <typename T>
-    void AddEventListener(std::function<void(T)> f)
+    int AddEventListener(std::function<void(T)> f)
     {
-        m_map[GetTypeId<T>()].second.push_back([f](std::any e) { f(std::any_cast<T>(e)); });
+        ListenerRecord r = {m_lastListenerId++, [f](std::any e) { f(std::any_cast<T>(e)); }};
+        m_map[GetTypeId<T>()].listeners.push_back(r);
+        return r.id;
     }
 
-    template <typename T>
-    void RemoveEventListener(/* tbd */)
+    bool RemoveEventListener(int id)
     {
-        // TODO
+        for (auto& p : m_map)
+        {
+            auto i = std::begin(p.second.listeners);
+
+            while (i != std::end(p.second.listeners))
+            {
+                if (i->id == id)
+                {
+                    p.second.listeners.erase(i);
+                    return true;
+                }
+
+                i++;
+            }
+        }
+
+        return false;
     }
 
     template <typename T>
     void AddEvent(T event)
     {
-        m_map[GetTypeId<T>()].first.push_back(event);
+        m_map[GetTypeId<T>()].events.push_back(event);
     }
 
     void ProcessQueuedEvents()
     {
         for (auto& p : m_map)
         {
-            for (auto& event : p.second.first)
+            for (auto& event : p.second.events)
             {
-                for (auto& eventListener : p.second.second)
+                for (auto& eventListener : p.second.listeners)
                 {
-                    eventListener(event);
+                    eventListener.f(event);
                 }
             }
 
             // Clear events.
-            p.second.first.clear();
+            p.second.events.clear();
         }
     }
 
 private:
+    struct ListenerRecord
+    {
+        int                           id;
+        std::function<void(std::any)> f;
+    };
+
+    struct TypeData
+    {
+        std::vector<std::any>       events;
+        std::vector<ListenerRecord> listeners;
+    };
+
     template <typename T>
     inline static int GetTypeId()
     {
@@ -76,10 +102,8 @@ private:
     }
 
     static std::atomic_int s_lastTypeId;
+    std::atomic_int        m_lastListenerId = 0;
 
-    using GenEventListener = std::function<void(std::any)>;
-    using GenVector        = std::vector<std::any>;
-
-    std::unordered_map<int, std::pair<GenVector, std::vector<GenEventListener>>> m_map;
+    std::unordered_map<int, TypeData> m_map;
 };
 } // namespace TinyEvent
